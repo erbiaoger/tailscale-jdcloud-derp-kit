@@ -1,6 +1,6 @@
 # Tailscale 自建 JDCloud DERP 完整部署流程
 
-本文档记录当前已验证成功的方案。目标是让 Mac 和实验室服务器都通过京东云 DERP 中转，避开 iPhone 热点或运营商网络导致的官方 DERP 慢路径。
+本文档记录当前已验证成功的方案。目标是保留 Tailscale 直连能力，同时在无法直连时强制使用京东云 DERP 中转，避开 iPhone 热点或运营商网络导致的官方 DERP 慢路径。
 
 ## 0. 当前已验证结果
 
@@ -19,6 +19,20 @@ ssh 100.88.219.12 可登录
 ```
 
 ## 1. 部署架构
+
+实际选路逻辑：
+
+```text
+能直连时：
+Mac ---- Tailscale direct ---- 实验室服务器
+
+不能直连时：
+Mac ---- JDCloud DERP ---- 实验室服务器
+```
+
+`OmitDefaultRegions: true` 只影响 DERP 中继候选列表，不会禁止 Tailscale 的 direct 直连。它的含义是：如果 Tailscale 需要使用 DERP，则只能使用我们自建的 `jdc`，不再使用官方 `hkg/tok/sfo/...`。
+
+中继路径：
 
 ```text
 Mac

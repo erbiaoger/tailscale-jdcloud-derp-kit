@@ -1,6 +1,18 @@
 # Tailscale JDCloud DERP Kit
 
-这个项目记录并自动化部署一套自建 Tailscale DERP 中转：
+这个项目记录并自动化部署一套自建 Tailscale DERP 中转。
+
+当前推荐目标是：
+
+```text
+能直连时：
+Mac ---- Tailscale direct ---- 实验室服务器
+
+不能直连时：
+Mac ---- JDCloud DERP ---- 实验室服务器
+```
+
+也就是说，Tailscale 仍然会优先尝试点对点直连；只有直连失败、必须使用 DERP 中继时，才强制使用京东云 DERP。
 
 ```text
 Mac ---- JDCloud DERP ---- 实验室服务器
@@ -52,7 +64,17 @@ bash scripts/verify_derp.sh
 
 ## 当前推荐策略
 
-已验证最稳定的是 `OmitDefaultRegions: true`，即只使用自建 JDCloud DERP。这样可以强制 Mac 和实验室服务器都走 `jdc`。
+已验证最稳定的是 `OmitDefaultRegions: true`，即只保留自建 JDCloud DERP 作为中继区域。
+
+这不会关闭 Tailscale 的点对点直连。实际选路逻辑是：
+
+```text
+1. Tailscale 先尝试 direct 直连。
+2. 如果 direct 成功，流量不经过京东云。
+3. 如果 direct 失败，需要 DERP 中继，则只走 JDCloud DERP。
+```
+
+所以当前方案不是“所有流量都强制经过京东云”，而是“直连优先，不能直连时强制京东云中继”。
 
 代价是：如果 JDCloud DERP 挂了，就没有官方 DERP fallback。需要恢复时，在 Tailscale ACL 删除 `OmitDefaultRegions` 或临时删除整个 `derpMap`。
 
