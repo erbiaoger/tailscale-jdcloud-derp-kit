@@ -1,0 +1,6 @@
+config.env
+certs/*.key
+certs/*.pem
+certs/*.crt
+*.log
+.DS_Store

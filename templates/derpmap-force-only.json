@@ -1,0 +1,22 @@
+"derpMap": {
+  "OmitDefaultRegions": true,
+  "Regions": {
+    "900": {
+      "RegionID": 900,
+      "RegionCode": "jdc",
+      "RegionName": "JDCloud",
+      "Latitude": 39.9042,
+      "Longitude": 116.4074,
+      "Nodes": [
+        {
+          "Name": "900a",
+          "RegionID": 900,
+          "HostName": "117.72.114.86",
+          "IPv4": "117.72.114.86",
+          "CertName": "117.72.114.86",
+          "CanPort80": true
+        }
+      ]
+    }
+  }
+}
