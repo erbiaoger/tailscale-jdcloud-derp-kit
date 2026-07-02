@@ -104,6 +104,61 @@ tcp *:80
 udp *:3478
 ```
 
+## 这次真实故障：xray/nginx 抢占端口
+
+这次京东云上的实际问题不是 Tailscale 客户端，而是 VPS 上另一个服务抢占了 DERP 需要的端口：
+
+- `xray` 占住了 `443`
+- `nginx` 占住了 `80`
+- `derper` 变成了 `inactive (dead)`
+
+典型现象：
+
+```text
+curl https://117.72.114.86/  超时或返回 Cloudflare 证书
+curl http://117.72.114.86/generate_204  返回 nginx 404
+Tailscale debug derp 900 连接失败
+```
+
+排查命令：
+
+```bash
+ssh root@117.72.114.86 'systemctl status derper xray nginx --no-pager -l; ss -ltnup | grep -E ":(80|443|3478)"'
+```
+
+如果看到类似结果，就说明端口冲突：
+
+```text
+udp *:443  users:(("xray",...))
+tcp *:80   users:(("nginx",...))
+tcp *:443  users:(("xray",...))
+```
+
+恢复步骤：
+
+```bash
+ssh root@117.72.114.86 'systemctl disable --now xray nginx; systemctl enable --now derper'
+```
+
+恢复后再确认：
+
+```bash
+ssh root@117.72.114.86 'systemctl status derper --no-pager -l; ss -ltnup | grep -E ":(80|443|3478)"'
+curl -4vk --noproxy '*' https://117.72.114.86/
+curl -4v --noproxy '*' http://117.72.114.86/generate_204
+```
+
+期望结果：
+
+```text
+derper: active (running)
+tcp *:443  users:(("derper",...))
+tcp *:80   users:(("derper",...))
+udp *:3478 users:(("derper",...))
+HTTP/1.1 200 OK
+HTTP/1.1 204 No Content
+```
+
 ## 检查实验室服务器是否信任证书
 
 ```bash
