@@ -11,12 +11,14 @@
 #
 # 输出:
 #   - 安装或更新 /usr/local/bin/derper
-#   - 生成标准 397 天 IP SAN 自签证书
+#   - 复用已有 IP SAN 自签证书；缺失时才生成标准 397 天证书
 #   - 写入 /etc/systemd/system/derper.service
 #   - 重启 derper，并打印证书指纹与 DERPMap 提示
 #
 # 重要:
 #   云厂商安全组仍需放行 TCP 443、TCP 80、UDP 3478。
+#   如确实需要换证书，运行:
+#     FORCE_RENEW_DERP_CERT=1 bash scripts/vps_install_derper.sh
 
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
@@ -28,7 +30,7 @@ log "目标 VPS: ${VPS_SSH}"
 log "DERP Host: ${DERP_HOST}"
 log "derper version: ${DERPER_VERSION}"
 
-ssh "$VPS_SSH" "DERP_HOST='$DERP_HOST' DERPER_VERSION='$DERPER_VERSION' bash -s" <<'REMOTE'
+ssh "$VPS_SSH" "DERP_HOST='$DERP_HOST' DERPER_VERSION='$DERPER_VERSION' FORCE_RENEW_DERP_CERT='${FORCE_RENEW_DERP_CERT:-0}' bash -s" <<'REMOTE'
 set -euo pipefail
 
 log() { printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
@@ -54,26 +56,35 @@ log "安装 derper ${DERPER_VERSION}"
 GOBIN=/usr/local/bin go install "tailscale.com/cmd/derper@${DERPER_VERSION}"
 /usr/local/bin/derper -version || true
 
-log "生成标准 IP SAN 自签证书，有效期 397 天"
 install -d -m 700 /var/lib/derper/certs
-if [[ -f "/var/lib/derper/certs/${DERP_HOST}.crt" ]]; then
-  cp -a "/var/lib/derper/certs/${DERP_HOST}.crt" "/var/lib/derper/certs/${DERP_HOST}.crt.bak.$(date +%Y%m%d-%H%M%S)"
-fi
-if [[ -f "/var/lib/derper/certs/${DERP_HOST}.key" ]]; then
-  cp -a "/var/lib/derper/certs/${DERP_HOST}.key" "/var/lib/derper/certs/${DERP_HOST}.key.bak.$(date +%Y%m%d-%H%M%S)"
-fi
 
-openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 397 \
-  -keyout "/var/lib/derper/certs/${DERP_HOST}.key" \
-  -out "/var/lib/derper/certs/${DERP_HOST}.crt" \
-  -subj "/CN=${DERP_HOST}" \
-  -addext "subjectAltName=IP:${DERP_HOST}" \
-  -addext "basicConstraints=critical,CA:FALSE" \
-  -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
-  -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
+if [[ "${FORCE_RENEW_DERP_CERT}" == "1" || ! -f "/var/lib/derper/certs/${DERP_HOST}.crt" || ! -f "/var/lib/derper/certs/${DERP_HOST}.key" ]]; then
+  log "生成标准 IP SAN 自签证书，有效期 397 天"
+  if [[ -f "/var/lib/derper/certs/${DERP_HOST}.crt" ]]; then
+    cp -a "/var/lib/derper/certs/${DERP_HOST}.crt" "/var/lib/derper/certs/${DERP_HOST}.crt.bak.$(date +%Y%m%d-%H%M%S)"
+  fi
+  if [[ -f "/var/lib/derper/certs/${DERP_HOST}.key" ]]; then
+    cp -a "/var/lib/derper/certs/${DERP_HOST}.key" "/var/lib/derper/certs/${DERP_HOST}.key.bak.$(date +%Y%m%d-%H%M%S)"
+  fi
+
+  openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 397 \
+    -keyout "/var/lib/derper/certs/${DERP_HOST}.key" \
+    -out "/var/lib/derper/certs/${DERP_HOST}.crt" \
+    -subj "/CN=${DERP_HOST}" \
+    -addext "subjectAltName=IP:${DERP_HOST}" \
+    -addext "basicConstraints=critical,CA:FALSE" \
+    -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+    -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1
+else
+  log "复用已有 DERP 证书，避免客户端和实验室服务器信任失效"
+fi
 chmod 600 "/var/lib/derper/certs/${DERP_HOST}.key"
 
 log "写入 systemd 服务"
+systemctl unmask derper >/dev/null 2>&1 || true
+if [[ -L /etc/systemd/system/derper.service && "$(readlink /etc/systemd/system/derper.service)" == "/dev/null" ]]; then
+  rm -f /etc/systemd/system/derper.service
+fi
 cat >/etc/systemd/system/derper.service <<EOF
 [Unit]
 Description=Tailscale DERP relay

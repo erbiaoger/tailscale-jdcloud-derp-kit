@@ -140,6 +140,20 @@ tcp *:443  users:(("xray",...))
 ssh root@117.72.114.86 'systemctl disable --now xray nginx; systemctl enable --now derper'
 ```
 
+如果重启后 `xray/nginx` 又抢回 `80/443`，说明这台 VPS 同时装过个人代理服务。此时只 `disable` 不够，必须 mask 冲突服务：
+
+```bash
+ssh root@117.72.114.86 'systemctl stop xray nginx subscription-server || true; systemctl disable xray nginx subscription-server || true; systemctl mask nginx; mv /etc/systemd/system/xray.service /etc/systemd/system/xray.service.disabled.$(date +%Y%m%d-%H%M%S); ln -sfn /dev/null /etc/systemd/system/xray.service; systemctl daemon-reload'
+```
+
+然后重新部署或启动 DERP：
+
+```bash
+bash scripts/vps_install_derper.sh
+```
+
+注意：不要随意换 DERP 自签证书。Mac 和实验室 Linux 都信任当前证书；如证书被换掉，实验室服务器需要重新安装证书。`scripts/vps_install_derper.sh` 默认复用已有证书，只有设置 `FORCE_RENEW_DERP_CERT=1` 才会强制换证书。
+
 恢复后再确认：
 
 ```bash
