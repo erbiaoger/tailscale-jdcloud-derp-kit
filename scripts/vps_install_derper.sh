@@ -47,6 +47,40 @@ if ! command -v openssl >/dev/null 2>&1; then
   apt-get install -y openssl ca-certificates
 fi
 
+log "停用会抢占 80/443 的代理服务"
+systemctl stop xray nginx subscription-server >/dev/null 2>&1 || true
+systemctl disable xray nginx subscription-server >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/multi-user.target.wants/xray.service \
+  /etc/systemd/system/multi-user.target.wants/nginx.service \
+  /etc/systemd/system/multi-user.target.wants/subscription-server.service
+chattr -i /etc/systemd/system/xray.service /etc/systemd/system/nginx.service >/dev/null 2>&1 || true
+if [[ -f /root/install_xray_reality.sh ]]; then
+  mv -f /root/install_xray_reality.sh "/root/install_xray_reality.sh.disabled.$(date +%Y%m%d-%H%M%S)"
+fi
+chmod 000 /root/install_xray_reality.sh.disabled.* >/dev/null 2>&1 || true
+
+cat >/etc/systemd/system/xray.service <<'EOF'
+[Unit]
+Description=Disabled: conflicts with Tailscale DERP on TCP/UDP 443
+RefuseManualStart=yes
+
+[Service]
+Type=oneshot
+ExecStart=/bin/false
+EOF
+
+cat >/etc/systemd/system/nginx.service <<'EOF'
+[Unit]
+Description=Disabled: conflicts with Tailscale DERP on TCP 80
+RefuseManualStart=yes
+
+[Service]
+Type=oneshot
+ExecStart=/bin/false
+EOF
+
+chattr +i /etc/systemd/system/xray.service /etc/systemd/system/nginx.service >/dev/null 2>&1 || true
+
 log "备份旧 derper"
 if [[ -x /usr/local/bin/derper ]]; then
   cp -a /usr/local/bin/derper "/usr/local/bin/derper.bak.$(date +%Y%m%d-%H%M%S)"
@@ -81,6 +115,7 @@ fi
 chmod 600 "/var/lib/derper/certs/${DERP_HOST}.key"
 
 log "写入 systemd 服务"
+chattr -i /etc/systemd/system/derper.service >/dev/null 2>&1 || true
 systemctl unmask derper >/dev/null 2>&1 || true
 if [[ -L /etc/systemd/system/derper.service && "$(readlink /etc/systemd/system/derper.service)" == "/dev/null" ]]; then
   rm -f /etc/systemd/system/derper.service
@@ -101,6 +136,7 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
+chattr +i /etc/systemd/system/derper.service >/dev/null 2>&1 || true
 
 log "重启 derper"
 systemctl daemon-reload

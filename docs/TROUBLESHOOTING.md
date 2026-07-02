@@ -140,10 +140,26 @@ tcp *:443  users:(("xray",...))
 ssh root@117.72.114.86 'systemctl disable --now xray nginx; systemctl enable --now derper'
 ```
 
-如果重启后 `xray/nginx` 又抢回 `80/443`，说明这台 VPS 同时装过个人代理服务。此时只 `disable` 不够，必须 mask 冲突服务：
+如果修复后 `xray/nginx` 又抢回 `80/443`，说明这台 VPS 同时装过个人代理服务，或者本机仍有 VS Code Remote SSH / 自动化会话连接到同一台 VPS 并重新部署代理栈。先在本机关闭或杀掉连到 `tail` 的 VS Code Remote 会话：
 
 ```bash
-ssh root@117.72.114.86 'systemctl stop xray nginx subscription-server || true; systemctl disable xray nginx subscription-server || true; systemctl mask nginx; mv /etc/systemd/system/xray.service /etc/systemd/system/xray.service.disabled.$(date +%Y%m%d-%H%M%S); ln -sfn /dev/null /etc/systemd/system/xray.service; systemctl daemon-reload'
+ps auxww | grep -E 'config-vscode-remote.* tail bash|ssh -T -D .* tail bash'
+pkill -f 'config-vscode-remote.* tail bash' || true
+pkill -f 'ssh -T -D .* tail bash' || true
+```
+
+然后重新部署 DERP。`scripts/vps_install_derper.sh` 会执行这些保护动作：
+
+- 停止并禁用 `xray`、`nginx`、`subscription-server`。
+- 删除它们的 `multi-user.target.wants` 自启链接。
+- 隔离 `/root/install_xray_reality.sh`。
+- 把 `xray.service`、`nginx.service` 替换成 `RefuseManualStart=yes` 的 blocker unit。
+- 对 `derper.service`、`xray.service`、`nginx.service` 设置 immutable，避免被误改或重建。
+
+如需手工确认 blocker 状态：
+
+```bash
+ssh root@117.72.114.86 'systemctl is-enabled derper xray nginx subscription-server; lsattr /etc/systemd/system/derper.service /etc/systemd/system/xray.service /etc/systemd/system/nginx.service'
 ```
 
 然后重新部署或启动 DERP：
