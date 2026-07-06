@@ -125,7 +125,35 @@ ExecStart=/usr/local/bin/derper -a :443 -hostname 117.72.114.86 -certmode manual
 bash scripts/mac_install_derp_cert.sh
 ```
 
-脚本会把 DERP 自签证书安装到当前用户登录钥匙串。
+脚本会把 DERP 自签证书安装到当前用户登录钥匙串，并把它标记为受信任根证书。
+
+如果你想手工做，步骤是：
+
+1. 先确认本地已经拿到证书：
+
+```bash
+ls -l certs/jdc-derper-117.72.114.86.crt
+```
+
+2. 把证书加入当前用户登录钥匙串并设为信任：
+
+```bash
+security add-trusted-cert -d -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" certs/jdc-derper-117.72.114.86.crt
+```
+
+3. 验证 macOS 是否接受这张证书：
+
+```bash
+security verify-cert -c certs/jdc-derper-117.72.114.86.crt -p ssl -s 117.72.114.86
+```
+
+4. 再直接测 HTTPS：
+
+```bash
+curl -4vk --noproxy '*' https://117.72.114.86/
+```
+
+只要这里能看到 `SSL certificate verify ok.`，Tailscale 才有机会正常连上 `DERP(jdc)`。
 
 本次排障确认：Mac 不信任证书时，会出现：
 

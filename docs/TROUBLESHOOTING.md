@@ -55,6 +55,25 @@ curl -4vk --noproxy '*' https://117.72.114.86/
 HTTP/1.1 200 OK
 ```
 
+如果这里出现证书不受信任，先把证书装进 Mac 当前用户钥匙串：
+
+```bash
+bash scripts/mac_install_derp_cert.sh
+```
+
+或者手工执行：
+
+```bash
+security add-trusted-cert -d -r trustRoot -k "$HOME/Library/Keychains/login.keychain-db" certs/jdc-derper-117.72.114.86.crt
+security verify-cert -c certs/jdc-derper-117.72.114.86.crt -p ssl -s 117.72.114.86
+```
+
+验证通过后，再重试：
+
+```bash
+curl -4vk --noproxy '*' https://117.72.114.86/
+```
+
 ## 检查 DERP HTTP 80
 
 ```bash
@@ -89,6 +108,34 @@ Node returned IPv4 STUN response
 ```
 
 如果没有 STUN response，检查云安全组 `UDP 3478`。
+
+## 检查 Mac 是否真的信任了 DERP 证书
+
+如果 `Tailscale debug derp 900` 仍然报：
+
+```text
+x509: certificate signed by unknown authority
+```
+
+那通常是 Mac 还没把证书信任进去，或者信任装到了别的钥匙串里。先看证书摘要：
+
+```bash
+openssl x509 -in certs/jdc-derper-117.72.114.86.crt -noout -subject -issuer -dates -fingerprint -sha256
+```
+
+再确认系统已经接受它：
+
+```bash
+security verify-cert -c certs/jdc-derper-117.72.114.86.crt -p ssl -s 117.72.114.86
+```
+
+如果这里还是失败，重新执行：
+
+```bash
+bash scripts/mac_install_derp_cert.sh
+```
+
+这一步会把证书写进当前用户登录钥匙串，适合本项目这种“只信任这张自签 DERP 证书”的用法。
 
 ## 检查云服务器 derper
 
